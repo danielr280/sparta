@@ -1,0 +1,10 @@
+SPARTA is a terrible acronym for "Scanning platform for assisting in
+reverse-engineering, testing, and auditing".  The basic idea is to automate the
+process of identifying potential targets on Linux systems and leveraging
+package managers to download source code.  It currently enumerates setuid
+applications and all listening network services.  If run as root, it reliably
+identifies the application associated with each listening port using lsof.
+Otherwise, it makes a best guess based on available information from ps and a
+list of port-service mappings provided in ports.conf.
+
+It's all in Ruby, and uses ncurses for the old-school terminal interface.

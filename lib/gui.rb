@@ -48,8 +48,6 @@ class Gui
       # Refresh screen
       Ncurses.doupdate() # update read screen
 
-      @file = File.new("output", "w")
-
     ensure
       Ncurses.echo
       Ncurses.cbreak
