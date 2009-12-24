@@ -1,0 +1,165 @@
+#!/usr/bin/ruby
+
+####################################
+#
+# sparta
+#
+# (S)canning (P)latform for (A)ssisting in (R)everse 
+# engineering, (T)esting, and (A)uditing
+#
+# By bliss 
+####################################
+
+require 'optparse'
+require 'ncurses'
+require 'lib/constants'
+require 'lib/apps'
+require 'lib/scanner'
+require 'lib/gui'
+
+###############################
+# Mainline
+###############################
+
+# Set PATH because "which" needs it
+ENV['PATH'] = '/bin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin'
+
+`#{Constants::CLEARPATH}`
+
+options = {}
+options[:setuid] = true
+options[:tcp] = true
+options[:udp] = true
+
+# New vulnlinst and scanner
+gui = Gui.new
+vulnlist = VulnList.new(gui)
+scanner = Scanner.new(vulnlist, gui)
+
+# Kernel version and ASLR status
+$kernel = `#{Constants::UNAMEPATH} -r`
+aslr = `#{Constants::CATPATH} /proc/sys/kernel/randomize_va_space`
+$aslr = (aslr.chomp == "0") ? "Disabled" : "Enabled"
+
+gui.infoPrint("Kernel version: #{$kernel}\n")
+gui.infoPrint("ASLR #{$aslr}")
+
+# Perform scans
+if options[:setuid]
+	scanner.scanSetuid
+	vulnlist.printSetuidList
+end
+
+if options[:tcp]
+	scanner.scanTcp
+  vulnlist.printTcpList
+end
+
+if options[:udp]
+  scanner.scanUdp
+  vulnlist.printUdpList
+end
+
+gui.listPrint
+
+# Main loop
+while 1
+  # Prompt
+  gui.termClear
+  
+  num = gui.query("Enter an app number for more information, 'q' to quit: ") 
+
+	if num == 'q'
+    Ncurses.endwin
+    exit
+  end
+
+  if num == '+'
+    gui.upScroll
+  end
+
+  if num == '-'
+    gui.downScroll
+  end
+
+  # Try to convert to integer
+  begin
+    test = Integer(num)
+    if test > 0
+      app = vulnlist.getApp(test)
+    else app = nil
+    end
+  rescue ArgumentError 
+    app = nil 
+  end
+
+  # If we didn't get an app for whatever reason, print error and continue
+  if app == nil
+#		gui.termOut("Invalid ID.")
+		next
+	end
+
+  # Resolve the app's info, print its details
+	app.resolve
+  gui.detailClear
+	app.printDetails(gui)
+
+  # If we've got apt, we can potentially download a source package
+  gui.termClear
+  input = gui.query("Please enter command (g = gdb, s = source, t = strace, l = ltrace, q = quit, default = select another app): ")
+
+  case input
+    when 's'
+      if Constants::PACKAGE == "apt"
+        # Try to get its package - if we know it, offer to download
+	      package = app.getPackage
+	      if package != Constants::NOTFOUND
+          Dir.chdir("source")
+          Dir.mkdir(package)
+          Dir.chdir(package)
+			    `#{Constants::APTGET} source #{package} 2>/dev/null`
+			    Dir.chdir("../../")
+        else
+          gui.query(" Package information not found (press enter to continue).")
+  		  end
+      else
+        gui.query(" Source packages only supported for apt (press enter to continue).")
+  	  end
+
+    when 'g'
+      path = app.getPath
+      if path != Constants::NOTFOUND
+        Ncurses.endwin
+        exec("#{Constants::GDBPATH} #{path}")
+      else 
+        gui.query(" Binary not found (press enter to continue).")
+      end
+    
+    when 't'
+      if input == 't'
+        path = app.getPath
+        if path != Constants::NOTFOUND
+          Ncurses.endwin
+          exec("#{Constants::STRACEPATH} #{path}")
+        else 
+          gui.query(" Binary not found (press enter to continue)")
+        end
+      end
+
+    when 'l'
+      path = app.getPath
+      if path != Constants::NOTFOUND
+        Ncurses.endwin
+        exec("#{Constants::LTRACEPATH} #{path}")
+      else 
+        gui.query(" Binary not found (press enter to continue)")
+        gui.getTermCh
+      end
+
+    when 'q'
+      Ncurses.endwin
+      exit
+    
+  end
+end
+
